@@ -1,17 +1,18 @@
 use std::{
     error,
-    fmt::Display,
     fs::read_to_string,
     io::Result,
     result,
     time::{SystemTime, SystemTimeError},
 };
 
-use pancurses::{initscr, noecho, Input, Window};
+use ordinal::Ordinal;
+use pancurses::{initscr, noecho, Input, Window, endwin, A_DIM};
 use rand::Rng;
 
 const MAX_DEBUG_LENGTH: i32 = 20;
 const WORD_LENGTH: i32 = 5;
+const WIN_TEXT_LINES: i32 = 5;
 
 fn main() -> result::Result<(), Box<dyn error::Error>> {
     let words = get_words()?;
@@ -22,7 +23,9 @@ fn main() -> result::Result<(), Box<dyn error::Error>> {
     let start = SystemTime::now();
     loop {
         let guess_prompt = format!("guess {}: ", guesses_taken + 1);
+        window.attron(A_DIM);
         window.addstr(guess_prompt.clone());
+        window.attroff(A_DIM);
         window.refresh();
         let mut guess = String::new();
         loop {
@@ -57,13 +60,13 @@ fn main() -> result::Result<(), Box<dyn error::Error>> {
         window.refresh();
         guesses_taken += 1;
         guesses.push(guess.clone());
-
         if guess == *word {
             display_win(&window, guesses_taken, start, word, index)?;
             break;
         }
     }
-
+    window.getch();
+    endwin();
     Ok(())
 }
 
@@ -90,16 +93,33 @@ fn display_win(
     word: &String,
     index: usize,
 ) -> result::Result<(), SystemTimeError> {
-    window.clear();
-    window.addstr(format!(
-        "You took {guesses_taken} guess{}
-to guess the word `{word}` (zero-based index of {index})
-in ~{:.2} seconds!
+    window.mv(
+        window.get_max_y() - WIN_TEXT_LINES,
+        0,
+    );
 
-",
-        if guesses_taken == 1 { "" } else { "es" },
-        start.elapsed()?.as_secs_f64()
-    ));
+    window.attron(A_DIM);
+    window.addstr("You took ");
+    window.attroff(A_DIM);
+    window.addstr(&guesses_taken.to_string());
+    window.attron(A_DIM);
+    window.addstr(" guess");
+    window.addstr(if guesses_taken == 1 { "" } else { "es" });
+    window.addstr("\nto guess the word `");
+    window.attroff(A_DIM);
+    window.addstr(word);
+    window.attron(A_DIM);
+    window.addstr("` (the ");
+    window.attroff(A_DIM);
+    window.addstr(Ordinal(index + 1).to_string());
+    window.attron(A_DIM);
+    window.addstr(" word in the word list)\nin ~");
+    window.attroff(A_DIM);
+    window.addstr(&format!("{:.2}", start.elapsed()?.as_secs_f64()));
+    window.attron(A_DIM);
+    window.addstr(" seconds!\n\n");
+    window.attroff(A_DIM);
+    window.addstr("Press any key to exit.");
     window.refresh();
     Ok(())
 }
