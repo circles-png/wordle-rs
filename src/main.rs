@@ -161,6 +161,11 @@ fn create_window() -> Window {
 fn download_words() -> result::Result<(), Box<dyn error::Error>> {
     let words = get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt")?
         .text()?;
+    let words = words
+        .split_ascii_whitespace()
+        .filter(|word| word.len() == WORD_LENGTH as usize)
+        .collect::<Vec<&str>>()
+        .join("\n");
     write("words", words)?;
     Ok(())
 }
