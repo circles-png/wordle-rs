@@ -1,20 +1,25 @@
 use std::{
     error,
-    fs::read_to_string,
-    io::Result,
+    fs::{read_to_string, write},
+    io,
+    path::Path,
     result,
     time::{SystemTime, SystemTimeError},
 };
 
 use ordinal::Ordinal;
-use pancurses::{initscr, noecho, Input, Window, endwin, A_DIM};
+use pancurses::{endwin, initscr, noecho, Input, Window, A_DIM};
 use rand::Rng;
+use reqwest::blocking::get;
 
 const MAX_DEBUG_LENGTH: i32 = 20;
 const WORD_LENGTH: i32 = 5;
 const WIN_TEXT_LINES: i32 = 5;
 
 fn main() -> result::Result<(), Box<dyn error::Error>> {
+    if !Path::new("words").exists() {
+        download_words()?;
+    }
     let words = get_words()?;
     let (word, index) = pick(&words);
     let window = create_window();
@@ -93,10 +98,7 @@ fn display_win(
     word: &String,
     index: usize,
 ) -> result::Result<(), SystemTimeError> {
-    window.mv(
-        window.get_max_y() - WIN_TEXT_LINES,
-        0,
-    );
+    window.mv(window.get_max_y() - WIN_TEXT_LINES, 0);
 
     window.attron(A_DIM);
     window.addstr("You took ");
@@ -129,7 +131,7 @@ fn backspace(window: &Window) {
     window.delch();
 }
 
-fn get_words() -> Result<Vec<String>> {
+fn get_words() -> io::Result<Vec<String>> {
     Ok(read_to_string("words")?
         .split_ascii_whitespace()
         .filter_map(|word| {
@@ -154,4 +156,11 @@ fn create_window() -> Window {
     window.keypad(true);
     noecho();
     window
+}
+
+fn download_words() -> result::Result<(), Box<dyn error::Error>> {
+    let words = get("https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt")?
+        .text()?;
+    write("words", words)?;
+    Ok(())
 }
