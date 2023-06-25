@@ -8,7 +8,10 @@ use std::{
 };
 
 use ordinal::Ordinal;
-use pancurses::{endwin, initscr, noecho, Input, Window, A_DIM};
+use pancurses::{
+    curs_set, endwin, init_color, initscr, noecho,
+    Input, Window, A_DIM, Attributes, ColorPair, init_pair, start_color, use_default_colors,
+};
 use rand::Rng;
 use reqwest::blocking::get;
 
@@ -26,6 +29,7 @@ fn main() -> result::Result<(), Box<dyn error::Error>> {
     let mut guesses_taken = 0;
     let mut guesses = Vec::new();
     let start = SystemTime::now();
+
     loop {
         let guess_prompt = format!("guess {}: ", guesses_taken + 1);
         window.attron(A_DIM);
@@ -33,12 +37,18 @@ fn main() -> result::Result<(), Box<dyn error::Error>> {
         window.attroff(A_DIM);
         window.refresh();
         let mut guess = String::new();
+        let guess_position;
         loop {
             let input = window.getch();
             match input {
                 Some(Input::Character('\n'))
                     if guess.len() == 5 && words.contains(&guess) && !guesses.contains(&guess) =>
                 {
+                    guess_position = {
+                        let mut position = window.get_cur_yx();
+                        position.1 -= WORD_LENGTH;
+                        position
+                    };
                     break;
                 }
                 Some(Input::Character('\x7f'))
@@ -61,10 +71,35 @@ fn main() -> result::Result<(), Box<dyn error::Error>> {
             }
             window.refresh();
         }
-        window.addch('\n');
-        window.refresh();
         guesses_taken += 1;
         guesses.push(guess.clone());
+
+        for (position, guess_character, index) in
+            guess.chars().enumerate().map(|(index, character)| {
+                let mut position = guess_position;
+                position.1 += index as i32;
+                let position = position;
+                (position, character, index)
+            })
+        {
+            window.mv(position.0, position.1);
+            match word.chars().nth(index) {
+                Some(word_character) if word_character == guess_character => {
+                    window.addch(guess_character);
+                }
+                Some(_) => {
+                    window.color_set(0);
+                    window.addch('_');
+                }
+                None => {
+                    window.addch('?');
+                }
+            }
+        }
+
+        window.addch('\n');
+        window.refresh();
+
         if guess == *word {
             display_win(&window, guesses_taken, start, word, index)?;
             break;
@@ -121,7 +156,7 @@ fn display_win(
     window.attron(A_DIM);
     window.addstr(" seconds!\n\n");
     window.attroff(A_DIM);
-    window.addstr("Press any key to exit.");
+    window.addstr("Press any key to exit!");
     window.refresh();
     Ok(())
 }
@@ -155,6 +190,14 @@ fn create_window() -> Window {
     let window = initscr();
     window.keypad(true);
     noecho();
+
+    start_color();
+    use_default_colors();
+
+    init_pair(1, -1, 2);
+    init_pair(2, -1, 3);
+
+    curs_set(1);
     window
 }
 
