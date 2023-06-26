@@ -1,4 +1,5 @@
 use std::{
+    char,
     collections::HashMap,
     error,
     fs::{read_to_string, write},
@@ -40,7 +41,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
     );
 
     loop {
-        let guess_prompt = format!("guess {}: ", guesses_taken + 1);
+        let guess_prompt = format!("{} ", guesses_taken + 1);
         window.attron(A_DIM);
         window.addstr(guess_prompt.clone());
         window.attroff(A_DIM);
@@ -53,8 +54,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         loop {
             let input = window.getch();
             match input {
-                Some(Input::Character('\n'))
-                    if guess.len() == 5 && words.contains(&guess) && !guesses.contains(&guess) =>
+                Some(Input::Character('\n')) if guess.len() == 5 /* && words.contains(&guess) */ && !guesses.contains(&guess) =>
                 {
                     guess_position = {
                         let mut position = window.get_cur_yx();
@@ -69,14 +69,16 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                     backspace(&window);
                     guess.pop();
                 }
-                Some(Input::Character(character))
+                Some(Input::Character('\x7f')) => {}
+                Some(Input::Character(character)) => {
                     if character.is_ascii_alphabetic()
-                        && window.get_cur_x() < (guess_prompt.len() as i32 + WORD_LENGTH) =>
-                {
-                    window.addch(character);
-                    guess.push(character);
+                        && window.get_cur_x() < (guess_prompt.len() as i32 + WORD_LENGTH)
+                    {
+                        window.addch(character);
+                        guess.push(character);
+                    }
                 }
-                _ => {}
+                _ => (),
             }
             if let Some(Input::Character(character)) = input {
                 display_debug(character, &window);
@@ -86,86 +88,84 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         guesses_taken += 1;
         guesses.push(guess.clone());
 
-        for (position, guess_character, index, word_character) in
-            guess.chars().enumerate().map(|(index, character)| {
+        let mut word_characters_done = HashMap::new();
+        Extend::<(char, bool)>::extend(
+            &mut word_characters_done,
+            word.chars()
+                .map(|character| (character, false))
+                .collect::<Vec<(char, bool)>>(),
+        );
+        let data: Vec<((i32, i32), char, char)> = guess
+            .chars()
+            .enumerate()
+            .map(|(index, character)| {
                 let mut position = guess_position;
                 position.1 += index as i32;
                 let position = position;
-                (position, character, index, word.chars().nth(index).unwrap())
+                (position, character, word.chars().nth(index).unwrap())
             })
-        {
+            .collect();
+        for (position, guess_character, word_character) in data.iter() {
             window.mv(position.0, position.1);
-            window.color_set({
-                let mut color = 3;
-                if word.contains(guess_character)
-                    && index_by_character(word, index).unwrap() + 1
-                        <= word
-                            .chars()
-                            .filter(|character| character == &guess_character)
-                            .count()
-                {
-                    color = 2;
-                }
-                if word_character == guess_character {
-                    color = 1;
-                }
-                let color_pair = alphabet.get_mut(&guess_character).unwrap();
-                *color_pair = match color {
-                    1 => 1,
-                    2 if color_pair != &1 => 2,
-                    2 => 2,
-                    3 if color_pair == &0 => 3,
-                    _ => 3,
-                };
-                color
+            window.color_set(if guess_character == word_character {
+                word_characters_done.insert(*guess_character, true);
+                1
+            } else {
+                0
             });
-            window.addch(guess_character);
+            window.addch(*guess_character);
+            window.refresh();
+            window.color_set(0);
+        }
+        'yellow_or_gray: for (position, guess_character, word_character) in data.iter() {
+            window.mv(position.0, position.1);
+            window.color_set('calculate_color_pair: {
+                if *word_characters_done.get(word_character).unwrap() {
+                    continue 'yellow_or_gray;
+                }
+                if !word.contains(*guess_character) {
+                    break 'calculate_color_pair 1;
+                }
+
+                let index_of_character = word.char_indices().find_map(|(index, character)| {
+                    if character == *guess_character
+                        && !word_characters_done.get(&character).unwrap()
+                    {
+                        Some(index)
+                    } else {
+                        None
+                    }
+                });
+
+                match index_of_character {
+                    Some(index) => {
+                        word_characters_done.insert(word.chars().nth(index).unwrap(), true);
+                        2
+                    }
+                    None => 3,
+                }
+            });
+            window.addch(*guess_character);
+            window.refresh();
             window.color_set(0);
         }
 
-        window.addch('\n');
+        window.mv(window.get_cur_y() + 1, 0);
         window.refresh();
 
         if guess == *word {
             display_alphabet(&window, &alphabet);
-            display_win(&window, guesses_taken, start, word, index)?;
+            display_win(&window, guesses_taken, start, word, index, words.len())?;
             break;
         }
 
         if guesses_taken == MAX_GUESSES {
-            display_lose(&window, start, word, index)?;
+            display_lose(&window, start, word, index, words.len())?;
             break;
         }
     }
     window.getch();
     endwin();
-    Ok(())
-}
-
-fn display_lose(
-    window: &Window,
-    start: SystemTime,
-    word: &String,
-    index: usize,
-) -> Result<(), SystemTimeError> {
-    window.mv(window.get_max_y() - WIN_TEXT_LINES, 0);
-    window.attron(A_DIM);
-    window.addstr("You ran out of guesses\ntrying to guess the word `");
-    window.attroff(A_DIM);
-    window.addstr(word);
-    window.attron(A_DIM);
-    window.addstr("` (the ");
-    window.attroff(A_DIM);
-    window.addstr(Ordinal(index + 1).to_string());
-    window.attron(A_DIM);
-    window.addstr(" word in the word list)\nin ~");
-    window.attroff(A_DIM);
-    window.addstr(&format!("{:.2}", start.elapsed()?.as_secs_f64()));
-    window.attron(A_DIM);
-    window.addstr(" seconds!\n\n");
-    window.attroff(A_DIM);
-    window.addstr("Press any key to exit!");
-    window.refresh();
     Ok(())
 }
 
@@ -190,7 +190,7 @@ fn display_debug(character: char, window: &Window) {
     window.mvaddstr(
         window.get_max_y() - 1,
         window.get_max_x() - MAX_DEBUG_LENGTH,
-        "                    ",
+        " ".repeat(MAX_DEBUG_LENGTH as usize),
     );
     window.mvaddstr(
         window.get_max_y() - 1,
@@ -206,12 +206,13 @@ fn display_win(
     start: SystemTime,
     word: &String,
     index: usize,
+    words: usize,
 ) -> Result<(), SystemTimeError> {
     window.mv(window.get_max_y() - WIN_TEXT_LINES, 0);
     window.attron(A_DIM);
     window.addstr("You took ");
     window.attroff(A_DIM);
-    window.addstr(&guesses_taken.to_string());
+    window.addstr(guesses_taken.to_string());
     window.attron(A_DIM);
     window.addstr(" guess");
     window.addstr(if guesses_taken == 1 { "" } else { "es" });
@@ -223,9 +224,45 @@ fn display_win(
     window.attroff(A_DIM);
     window.addstr(Ordinal(index + 1).to_string());
     window.attron(A_DIM);
-    window.addstr(" word in the word list)\nin ~");
+    window.addstr(" word in the word list of ");
     window.attroff(A_DIM);
-    window.addstr(&format!("{:.2}", start.elapsed()?.as_secs_f64()));
+    window.addstr(words.to_string());
+    window.attron(A_DIM);
+    window.addstr(" words)\nin ~");
+    window.attroff(A_DIM);
+    window.addstr(format!("{:.2}", start.elapsed()?.as_secs_f64()));
+    window.attron(A_DIM);
+    window.addstr(" seconds!\n\n");
+    window.attroff(A_DIM);
+    window.addstr("Press any key to exit!");
+    window.refresh();
+    Ok(())
+}
+
+fn display_lose(
+    window: &Window,
+    start: SystemTime,
+    word: &String,
+    index: usize,
+    words: usize,
+) -> Result<(), SystemTimeError> {
+    window.mv(window.get_max_y() - WIN_TEXT_LINES, 0);
+    window.attron(A_DIM);
+    window.addstr("You ran out of guesses\ntrying to guess the word `");
+    window.attroff(A_DIM);
+    window.addstr(word);
+    window.attron(A_DIM);
+    window.addstr("` (the ");
+    window.attroff(A_DIM);
+    window.addstr(Ordinal(index + 1).to_string());
+    window.attron(A_DIM);
+    window.addstr(" word in the word list of ");
+    window.attroff(A_DIM);
+    window.addstr(words.to_string());
+    window.attron(A_DIM);
+    window.addstr(" words)\nin ~");
+    window.attroff(A_DIM);
+    window.addstr(format!("{:.2}", start.elapsed()?.as_secs_f64()));
     window.attron(A_DIM);
     window.addstr(" seconds!\n\n");
     window.attroff(A_DIM);
@@ -285,37 +322,4 @@ fn download_words() -> Result<(), Box<dyn error::Error>> {
         .join("\n");
     write("words", words)?;
     Ok(())
-}
-
-fn index_by_character(text: &String, index: usize) -> Option<usize> {
-    if index >= text.len() {
-        return None;
-    }
-    text.char_indices()
-        .filter(|(_, character)| character == &text.chars().nth(index).unwrap())
-        .enumerate()
-        .filter_map(|(character_index, (word_index, _))| {
-            if word_index == index {
-                Some(character_index)
-            } else {
-                None
-            }
-        })
-        .at_most_one()
-        .unwrap_or(None)
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::index_by_character;
-
-    #[test]
-    fn test_index_by_character() {
-        assert_eq!(index_by_character(&"abcda".to_string(), 4), Some(1));
-        assert_eq!(index_by_character(&"ww".to_string(), 0), Some(0));
-        assert_eq!(index_by_character(&"djka".to_string(), 5), None);
-        assert_eq!(index_by_character(&"aoidwa".to_string(), 5), Some(1));
-        assert_eq!(index_by_character(&"bbbbb".to_string(), 3), Some(3));
-        assert_eq!(index_by_character(&"".to_string(), 0), None);
-    }
 }
