@@ -54,7 +54,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         loop {
             let input = window.getch();
             match input {
-                Some(Input::Character('\n')) if guess.len() == 5 /* && words.contains(&guess) */ && !guesses.contains(&guess) =>
+                Some(Input::Character('\n')) if guess.len() == 5 && words.contains(&guess) && !guesses.contains(&guess) =>
                 {
                     guess_position = {
                         let mut position = window.get_cur_yx();
@@ -114,7 +114,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 0
             });
             window.addch(*guess_character);
-            window.refresh();
             window.color_set(0);
         }
         'yellow_or_gray: for (position, guess_character, word_character) in data.iter() {
@@ -146,7 +145,6 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 }
             });
             window.addch(*guess_character);
-            window.refresh();
             window.color_set(0);
         }
 
