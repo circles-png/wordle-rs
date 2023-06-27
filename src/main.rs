@@ -107,11 +107,14 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 word_characters_done[*guess_index] = true;
                 guess_characters_done[*guess_index] = true;
                 window.color_set(1);
+                alphabet.insert(*guess_character, 1);
             }
             window.addch(*guess_character);
             window.color_set(0);
         }
-        'yellow_or_gray: for (position, guess_character, guess_index, _word_character) in data.iter() {
+        'yellow_or_gray: for (position, guess_character, guess_index, _word_character) in
+            data.iter()
+        {
             window.mv(position.0, position.1);
             window.color_set('calculate_color_pair: {
                 if *guess_characters_done.get(*guess_index).unwrap() {
@@ -119,34 +122,36 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 }
                 if !word.contains(*guess_character) {
                     guess_characters_done[*guess_index] = true;
+                    alphabet.insert(*guess_character, 3);
                     break 'calculate_color_pair 3;
                 }
 
                 let index_of_character = word.char_indices().find_map(|(word_index, character)| {
-                    if character == *guess_character && !word_characters_done.get(*guess_index).unwrap() {
+                    if character == *guess_character
+                        && !word_characters_done.get(*guess_index).unwrap()
+                    {
                         Some(word_index)
                     } else {
                         None
                     }
                 });
 
-                {
-                    let position = window.get_cur_yx();
-                    window.mvaddstr(20, 20, format!("{:?}", index_of_character));
-                    window.mv(position.0, position.1);
-                }
-
                 guess_characters_done[*guess_index] = true;
                 match index_of_character {
                     Some(index) => {
                         *word_characters_done.get_mut(index).unwrap() = true;
+                        if alphabet.get(guess_character).unwrap() != &1 {
+                            alphabet.insert(*guess_character, 2);
+                        }
                         2
                     }
-                    None => 3,
+                    None => {
+                        alphabet.insert(*guess_character, 3);
+                        3
+                    }
                 }
             });
             window.addch(*guess_character);
-            window.refresh();
             window.color_set(0);
         }
 
