@@ -28,7 +28,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         download_words()?;
     }
     let words = get_words()?;
-    let (word, index) = pick(&words);
+    // let (word, index) = pick(&words);
+    let (word, index) = (&"sakis".to_string(), 11977);
     let window = create_window();
     let mut guesses_taken = 0;
     let mut guesses = Vec::new();
@@ -54,7 +55,8 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         loop {
             let input = window.getch();
             match input {
-                Some(Input::Character('\n')) if guess.len() == 5 && words.contains(&guess) && !guesses.contains(&guess) =>
+                Some(Input::Character('\n'))
+                    if guess.len() == 5 && words.contains(&guess) && !guesses.contains(&guess) =>
                 {
                     guess_position = {
                         let mut position = window.get_cur_yx();
@@ -71,7 +73,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
                 }
                 Some(Input::Character('\x7f')) => {}
                 Some(Input::Character(character)) => {
-                    if character.is_ascii_alphabetic()
+                    if character.is_ascii_lowercase()
                         && window.get_cur_x() < (guess_prompt.len() as i32 + WORD_LENGTH)
                     {
                         window.addch(character);
@@ -88,63 +90,64 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         guesses_taken += 1;
         guesses.push(guess.clone());
 
-        let mut word_characters_done = HashMap::new();
-        Extend::<(char, bool)>::extend(
-            &mut word_characters_done,
-            word.chars()
-                .map(|character| (character, false))
-                .collect::<Vec<(char, bool)>>(),
-        );
-        let data: Vec<((i32, i32), char, char)> = guess
+        let mut word_characters_done = [false; WORD_LENGTH as usize].to_vec();
+        let mut guess_characters_done = [false; WORD_LENGTH as usize].to_vec();
+        let data: Vec<((i32, i32), char, usize, char)> = guess
             .chars()
             .enumerate()
             .map(|(index, character)| {
                 let mut position = guess_position;
                 position.1 += index as i32;
                 let position = position;
-                (position, character, word.chars().nth(index).unwrap())
+                (position, character, index, word.chars().nth(index).unwrap())
             })
             .collect();
-        for (position, guess_character, word_character) in data.iter() {
+        for (position, guess_character, guess_index, word_character) in data.iter() {
             window.mv(position.0, position.1);
-            window.color_set(if guess_character == word_character {
-                word_characters_done.insert(*guess_character, true);
-                1
-            } else {
-                0
-            });
+            if guess_character == word_character {
+                word_characters_done[*guess_index] = true;
+                guess_characters_done[*guess_index] = true;
+                window.color_set(1);
+            }
             window.addch(*guess_character);
             window.color_set(0);
         }
-        'yellow_or_gray: for (position, guess_character, word_character) in data.iter() {
+        'yellow_or_gray: for (position, guess_character, guess_index, word_character) in data.iter() {
             window.mv(position.0, position.1);
             window.color_set('calculate_color_pair: {
-                if *word_characters_done.get(word_character).unwrap() {
+                if *guess_characters_done.get(*guess_index).unwrap() {
                     continue 'yellow_or_gray;
                 }
                 if !word.contains(*guess_character) {
-                    break 'calculate_color_pair 1;
+                    guess_characters_done[*guess_index] = true;
+                    break 'calculate_color_pair 3;
                 }
 
-                let index_of_character = word.char_indices().find_map(|(index, character)| {
-                    if character == *guess_character
-                        && !word_characters_done.get(&character).unwrap()
-                    {
-                        Some(index)
+                let index_of_character = word.char_indices().find_map(|(word_index, character)| {
+                    if character == *guess_character && !word_characters_done.get(*guess_index).unwrap() {
+                        Some(word_index)
                     } else {
                         None
                     }
                 });
 
+                {
+                    let position = window.get_cur_yx();
+                    window.mvaddstr(20, 20, format!("{:?}", index_of_character));
+                    window.mv(position.0, position.1);
+                }
+
+                guess_characters_done[*guess_index] = true;
                 match index_of_character {
                     Some(index) => {
-                        word_characters_done.insert(word.chars().nth(index).unwrap(), true);
+                        *word_characters_done.get_mut(index).unwrap() = true;
                         2
                     }
                     None => 3,
                 }
             });
             window.addch(*guess_character);
+            window.refresh();
             window.color_set(0);
         }
 
