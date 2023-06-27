@@ -28,8 +28,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
         download_words()?;
     }
     let words = get_words()?;
-    // let (word, index) = pick(&words);
-    let (word, index) = (&"sakis".to_string(), 11977);
+    let (word, index) = pick(&words);
     let window = create_window();
     let mut guesses_taken = 0;
     let mut guesses = Vec::new();
@@ -112,7 +111,7 @@ fn main() -> Result<(), Box<dyn error::Error>> {
             window.addch(*guess_character);
             window.color_set(0);
         }
-        'yellow_or_gray: for (position, guess_character, guess_index, word_character) in data.iter() {
+        'yellow_or_gray: for (position, guess_character, guess_index, _word_character) in data.iter() {
             window.mv(position.0, position.1);
             window.color_set('calculate_color_pair: {
                 if *guess_characters_done.get(*guess_index).unwrap() {
